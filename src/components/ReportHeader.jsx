@@ -12,9 +12,10 @@ export default function ReportHeader({
   timestamp,
   coverageCount = 6,
   totalCategories = 7,
-  onRadiusChange,
-  onChangeLocationClick,
-  onSaveToCompare
+onRadiusChange,
+onChangeLocationClick,
+onSaveToCompare,
+saveMessage
 }) {
   const [isSaved, setIsSaved] = useState(false);
 
@@ -68,6 +69,19 @@ export default function ReportHeader({
               {isSaved ? <Check size={16} /> : <BookmarkPlus size={16} />}
               <span>{isSaved ? 'Saved for Compare' : 'Save to Compare'}</span>
             </button>
+            {saveMessage && (
+  <p
+    role="status"
+    aria-live="polite"
+    style={{
+      marginTop: '10px',
+      fontSize: '0.9rem',
+      color: saveMessage.startsWith('Could not') ? '#B42318' : '#287A46'
+    }}
+  >
+    {saveMessage}
+  </p>
+)}
           </div>
         </div>
 

@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import {
   Wind,
   GraduationCap,
@@ -42,6 +44,7 @@ const PRIORITY_OPTIONS = [
 export default function NeighborhoodReport() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Parse query parameters
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -52,6 +55,7 @@ export default function NeighborhoodReport() {
 
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
 
   const { reportData, isLoading, error, refetch } = useNeighborhoodReport(lat, lon, radiusKm, selectedPriority);
 
@@ -64,25 +68,47 @@ export default function NeighborhoodReport() {
     navigate(`/report?lat=${nLat}&lon=${nLon}&radius=${nRadius}&name=${encodeURIComponent(name)}`);
   };
 
-  const handleSaveToCompare = () => {
-    try {
-      const savedList = JSON.parse(localStorage.getItem('neighborhood_iq_comparisons') || '[]');
-      const newItem = {
-        id: `comp-${lat.toFixed(4)}-${lon.toFixed(4)}`,
-        name: propertyName,
-        lat,
-        lon,
-        radiusKm,
-        savedAt: new Date().toISOString()
-      };
-      if (!savedList.some(item => item.id === newItem.id)) {
-        savedList.push(newItem);
-        localStorage.setItem('neighborhood_iq_comparisons', JSON.stringify(savedList));
-      }
-    } catch (e) {
-      console.warn('LocalStorage save failed:', e);
+ 
+const handleSaveToCompare = async () => {
+  if (!user) {
+    navigate('/login');
+    return;
+  }
+
+  try {
+    setSaveMessage('');
+
+    const locationKey = `${lat.toFixed(4)}-${lon.toFixed(4)}`;
+
+    const { error } = await supabase
+      .from('saved_neighborhoods')
+      .upsert(
+        {
+          user_id: user.id,
+          location_key: locationKey,
+          name: propertyName,
+          lat,
+          lon,
+          radius_km: radiusKm,
+          report_data: reportData || {},
+          updated_at: new Date().toISOString()
+        },
+        {
+          onConflict: 'user_id,location_key'
+        }
+      );
+
+    if (error) {
+      throw error;
     }
-  };
+
+    setSaveMessage('Neighborhood saved to your comparisons!');
+  } catch (error) {
+    console.error('Failed to save neighborhood:', error);
+    setSaveMessage('Could not save neighborhood. Please try again.');
+  }
+};
+
 
   if (isLoading) {
     return <LoadingSkeleton />;
@@ -118,6 +144,7 @@ export default function NeighborhoodReport() {
         onRadiusChange={handleRadiusChange}
         onChangeLocationClick={() => setIsSearchModalOpen(true)}
         onSaveToCompare={handleSaveToCompare}
+        saveMessage={saveMessage}
       />
 
       <div className="container">

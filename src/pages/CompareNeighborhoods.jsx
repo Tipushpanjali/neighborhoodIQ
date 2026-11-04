@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import {
   GitCompare,
   Plus,
@@ -22,6 +24,10 @@ import { getAQIInfo } from '../utils/formatters';
 
 export default function CompareNeighborhoods() {
   // Initial comparison list (load 2 defaults or from localStorage)
+  const { user, loading: authLoading } = useAuth();
+
+const [savedLoading, setSavedLoading] = useState(false);
+const [saveMessage, setSaveMessage] = useState('');
   const [comparedList, setComparedList] = useState(() => {
     try {
       const stored = localStorage.getItem('neighborhood_iq_comparisons');
@@ -44,14 +50,70 @@ export default function CompareNeighborhoods() {
 
   const [isAddingLocation, setIsAddingLocation] = useState(false);
 
-  // Sync to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('neighborhood_iq_comparisons', JSON.stringify(comparedList));
-    } catch (e) {
-      console.warn('Storage sync failed:', e);
+// Load saved neighborhoods from Supabase
+useEffect(() => {
+  let isMounted = true;
+
+  const loadSavedNeighborhoods = async () => {
+    if (authLoading) return;
+
+    if (!user) {
+      setSavedLoading(false);
+      return;
     }
-  }, [comparedList]);
+
+    setSavedLoading(true);
+    setSaveMessage('');
+
+    const { data, error } = await supabase
+      .from('saved_neighborhoods')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!isMounted) return;
+
+    if (error) {
+      console.error('Failed to load saved neighborhoods:', error.message);
+      setSaveMessage('Could not load saved neighborhoods.');
+      setSavedLoading(false);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      const neighborhoods = data.slice(0, 4).map((row) => {
+        const report = row.report_data || {};
+
+        return {
+          ...report,
+          id: row.location_key,
+          name: row.name,
+          locality: row.name.split(',')[0],
+          city: report.city || 'Delhi NCR',
+          lat: Number(row.lat),
+          lon: Number(row.lon),
+          radiusKm: Number(row.radius_km),
+          overview: report.overview || {},
+          airQuality: report.airQuality || {},
+          schools: report.schools || [],
+          hospitals: report.hospitals || [],
+          publicTransport: report.publicTransport || {},
+          utility: report.utility || {}
+        };
+      });
+
+      setComparedList(neighborhoods);
+    }
+
+    setSavedLoading(false);
+  };
+
+  loadSavedNeighborhoods();
+
+  return () => {
+    isMounted = false;
+  };
+}, [user, authLoading]);
 
   const handleAddLocation = ({ name, lat, lon }) => {
     const existing = comparedList.find(c => c.name === name);
