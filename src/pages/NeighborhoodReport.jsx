@@ -87,8 +87,8 @@ const handleSaveToCompare = async () => {
           user_id: user.id,
           location_key: locationKey,
           name: propertyName,
-          lat,
-          lon,
+latitude: lat,
+longitude: lon,
           radius_km: radiusKm,
           report_data: reportData || {},
           updated_at: new Date().toISOString()
@@ -103,9 +103,11 @@ const handleSaveToCompare = async () => {
     }
 
     setSaveMessage('Neighborhood saved to your comparisons!');
+    return true;
   } catch (error) {
     console.error('Failed to save neighborhood:', error);
     setSaveMessage('Could not save neighborhood. Please try again.');
+    return false;
   }
 };
 

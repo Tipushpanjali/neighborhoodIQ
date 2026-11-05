@@ -90,8 +90,8 @@ useEffect(() => {
           name: row.name,
           locality: row.name.split(',')[0],
           city: report.city || 'Delhi NCR',
-          lat: Number(row.lat),
-          lon: Number(row.lon),
+lat: Number(row.latitude),
+lon: Number(row.longitude),
           radiusKm: Number(row.radius_km),
           overview: report.overview || {},
           airQuality: report.airQuality || {},
@@ -138,13 +138,45 @@ useEffect(() => {
     setIsAddingLocation(false);
   };
 
-  const handleRemove = (index) => {
-    if (comparedList.length <= 1) {
-      alert('Keep at least one neighborhood in comparison view.');
-      return;
+ 
+const handleRemove = async (index) => {
+  if (comparedList.length <= 1) {
+    alert('Keep at least one neighborhood in comparison view.');
+    return;
+  }
+
+  const neighborhood = comparedList[index];
+
+  try {
+    setSaveMessage('');
+
+    // Delete the saved neighborhood from Supabase
+    if (user && neighborhood.id) {
+      const { error } = await supabase
+        .from('saved_neighborhoods')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('location_key', neighborhood.id);
+
+      if (error) {
+        throw error;
+      }
     }
-    setComparedList(comparedList.filter((_, idx) => idx !== index));
-  };
+
+    // Update the comparison list immediately
+    setComparedList((currentList) =>
+      currentList.filter((_, idx) => idx !== index)
+    );
+
+    setSaveMessage(
+      `${neighborhood.name} removed from comparisons.`
+    );
+
+  } catch (error) {
+    console.error('Failed to remove neighborhood:', error);
+    setSaveMessage('Could not remove neighborhood. Please try again.');
+  }
+};
 
   // Prepare chart data
   const chartData = [
@@ -191,6 +223,38 @@ useEffect(() => {
             </button>
           </div>
         </div>
+        
+        {!user && (
+          <div
+            style={{
+              marginBottom: '20px',
+              padding: '16px 18px',
+              borderRadius: '12px',
+              backgroundColor: '#FFF9F0',
+              border: '1px solid #E8DCCB',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}
+          >
+            <p style={{ margin: 0, color: '#82756C', fontSize: '0.9rem' }}>
+              <strong>Note:</strong> Login for saving your comparison.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Link to="/login" className="btn-primary">
+                Login
+              </Link>
+
+              <Link to="/signup" className="btn-outline">
+                Sign Up
+              </Link>
+            </div>
+          </div>
+        )}
+
 
         {/* Add Location Card Drawer */}
         {isAddingLocation && (
@@ -406,10 +470,7 @@ useEffect(() => {
           </table>
         </div>
 
-        {/* Disclaimer about local storage persistence */}
-        <div style={{ marginTop: '20px', padding: '12px 16px', backgroundColor: '#FFF9F0', borderRadius: '12px', border: '1px solid #E8DCCB', fontSize: '0.8rem', color: '#82756C' }}>
-          <strong>Note on Data Persistence:</strong> Comparison selections are saved harmlessly in your local browser storage for convenience. They are not synchronized across devices or stored on any server.
-        </div>
+        
       </div>
     </div>
   );

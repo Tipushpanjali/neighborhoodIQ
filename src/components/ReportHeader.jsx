@@ -19,13 +19,23 @@ saveMessage
 }) {
   const [isSaved, setIsSaved] = useState(false);
 
-  const handleSave = () => {
-    if (onSaveToCompare) {
-      onSaveToCompare();
+  const handleSave = async () => {
+  if (!onSaveToCompare) return;
+
+  try {
+    const success = await onSaveToCompare();
+
+    if (success === true) {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2500);
+    } else {
+      setIsSaved(false);
     }
-  };
+  } catch (error) {
+    console.error('Save failed:', error);
+    setIsSaved(false);
+  }
+};
 
   return (
     <div className="report-header-banner">
