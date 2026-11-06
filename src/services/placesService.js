@@ -1,120 +1,271 @@
-import { calculateDistanceKm, filterAndSortByDistance } from '../utils/distance';
-import { DEMO_NEIGHBORHOODS } from '../data/demoNeighborhoods';
 
-const OVERPASS_URL = import.meta.env.VITE_OVERPASS_API_URL || 'https://overpass-api.de/api/interpreter';
+import { calculateDistanceKm } from '../utils/distance';
 
-// In-memory cache for session queries
+const OVERPASS_ENDPOINTS = [
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter'
+];
+
 const memoryCache = new Map();
+const REQUEST_TIMEOUT = 20000;
 
-/**
- * Fetch nearby places for schools, healthcare, and transit around coordinates within radiusKm
- */
-export async function fetchNearbyPlaces(lat, lon, radiusKm = 2.0) {
-  const cacheKey = `${lat.toFixed(3)}_${lon.toFixed(3)}_${radiusKm}`;
+const getCoordinates = (element) => {
+  const lat = element.lat ?? element.center?.lat;
+  const lon = element.lon ?? element.center?.lon;
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+
+  return { lat, lon };
+};
+
+const getName = (tags = {}) =>
+  tags.name || tags['name:en'] || tags.brand || 'Unnamed mapped place';
+
+const emptyResult = (latitude, longitude, radius, status, errorMessage = '') => ({
+  schools: [],
+  hospitals: [],
+  transit: [],
+  roads: [],
+  otherPlaces: [],
+  isLive: false,
+  status,
+  errorMessage,
+  source: 'OpenStreetMap',
+  fetchedAt: new Date().toISOString(),
+  searchedLocation: {
+    lat: latitude,
+    lon: longitude,
+    radiusKm: radius
+  }
+});
+
+export async function fetchNearbyPlaces(lat, lon, radiusKm = 2) {
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  const radius = Number(radiusKm);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    !Number.isFinite(radius) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180 ||
+    radius <= 0
+  ) {
+    throw new Error('Invalid location coordinates or search radius.');
+  }
+
+  const cacheKey = `${latitude.toFixed(5)}_${longitude.toFixed(5)}_${radius}`;
+
   if (memoryCache.has(cacheKey)) {
     return memoryCache.get(cacheKey);
   }
 
-  const radiusMeters = Math.round(radiusKm * 1000);
+  const radiusMeters = Math.round(radius * 1000);
 
-  // Try live Overpass query if network is available
-  try {
-    const query = `
-      [out:json][timeout:10];
-      (
-        node["amenity"="school"](around:${radiusMeters},${lat},${lon});
-        node["amenity"="hospital"](around:${radiusMeters},${lat},${lon});
-        node["amenity"="clinic"](around:${radiusMeters},${lat},${lon});
-        node["railway"="station"](around:${radiusMeters},${lat},${lon});
-        node["highway"="bus_stop"](around:${radiusMeters},${lat},${lon});
-      );
-      out body 30;
-    `;
+  const query = `
+    [out:json][timeout:25];
+    (
+      nwr["amenity"~"^(school|kindergarten|university|college)$"]
+        (around:${radiusMeters},${latitude},${longitude});
 
+      nwr["amenity"~"^(hospital|clinic|doctors|dentist|pharmacy)$"]
+        (around:${radiusMeters},${latitude},${longitude});
+
+      nwr["railway"~"^(station|halt)$"]
+        (around:${radiusMeters},${latitude},${longitude});
+
+      nwr["highway"="bus_stop"]
+        (around:${radiusMeters},${latitude},${longitude});
+
+      way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified|service)$"]
+        (around:${radiusMeters},${latitude},${longitude});
+    );
+    out center tags;
+  `;
+
+  let data = null;
+  let successfulEndpoint = null;
+  const errors = [];
+
+  // Try alternative Overpass servers if one is unavailable.
+  for (const endpoint of OVERPASS_ENDPOINTS) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT
+    );
 
-    const response = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      body: `data=${encodeURIComponent(query)}`,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+    try {
+      console.info(`Trying OpenStreetMap server: ${endpoint}`);
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data && Array.isArray(data.elements) && data.elements.length > 0) {
-        const schools = [];
-        const hospitals = [];
-        const transit = [];
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json'
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal
+      });
 
-        data.elements.forEach(el => {
-          const name = el.tags?.name || el.tags?.['name:en'] || 'Unnamed Facility';
-          const distance = calculateDistanceKm(lat, lon, el.lat, el.lon);
-          const item = {
-            id: `osm-${el.id}`,
-            name,
-            lat: el.lat,
-            lon: el.lon,
-            distanceKm: distance,
-            source: 'OpenStreetMap (OSM)',
-            verifiedDate: '2026-10-25'
-          };
-
-          if (el.tags?.amenity === 'school') {
-            schools.push({ ...item, type: el.tags?.operator_type || 'School', board: 'Recognized' });
-          } else if (el.tags?.amenity === 'hospital' || el.tags?.amenity === 'clinic') {
-            hospitals.push({ ...item, type: el.tags?.amenity === 'hospital' ? 'Hospital' : 'Clinic', emergency24x7: el.tags?.emergency === 'yes' });
-          } else if (el.tags?.railway === 'station' || el.tags?.highway === 'bus_stop') {
-            transit.push({ ...item, type: el.tags?.railway === 'station' ? 'Metro / Rail' : 'Bus Stop' });
-          }
-        });
-
-        const result = {
-          schools: schools.sort((a, b) => a.distanceKm - b.distanceKm),
-          hospitals: hospitals.sort((a, b) => a.distanceKm - b.distanceKm),
-          transit: transit.sort((a, b) => a.distanceKm - b.distanceKm),
-          isLive: true
-        };
-
-        memoryCache.set(cacheKey, result);
-        return result;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
+
+      const responseData = await response.json();
+
+      if (!Array.isArray(responseData.elements)) {
+        throw new Error('Invalid OpenStreetMap response.');
+      }
+
+      data = responseData;
+      successfulEndpoint = endpoint;
+
+      console.info(`OpenStreetMap connected: ${endpoint}`);
+      break;
+
+    } catch (error) {
+      const message = error.name === 'AbortError'
+        ? 'Request timed out'
+        : error.message;
+
+      errors.push(`${endpoint}: ${message}`);
+
+      console.warn(`Overpass server failed: ${message}`);
+
+    } finally {
+      clearTimeout(timeoutId);
     }
-  } catch (err) {
-    console.warn('Overpass API query failed or timed out; falling back to curated neighborhood dataset:', err.message);
   }
 
-  // Fallback to nearest curated demo neighborhood
-  const nearest = findNearestCuratedNeighborhood(lat, lon);
+  if (!data) {
+    const result = emptyResult(
+      latitude,
+      longitude,
+      radius,
+      'error',
+      `All OpenStreetMap servers failed. ${errors.join(' | ')}`
+    );
+
+    console.error(result.errorMessage);
+    return result;
+  }
+
+  const schools = [];
+  const hospitals = [];
+  const transit = [];
+  const roads = [];
+  const otherPlaces = [];
+
+  data.elements.forEach((element) => {
+    const coordinates = getCoordinates(element);
+    if (!coordinates) return;
+
+    const distanceKm = calculateDistanceKm(
+      latitude,
+      longitude,
+      coordinates.lat,
+      coordinates.lon
+    );
+
+    if (distanceKm > radius) return;
+
+    const tags = element.tags || {};
+
+    const item = {
+      id: `osm-${element.type}-${element.id}`,
+      name: getName(tags),
+      lat: coordinates.lat,
+      lon: coordinates.lon,
+      distanceKm: Number(distanceKm.toFixed(2)),
+      source: 'OpenStreetMap',
+      osmType: element.type,
+      osmId: element.id,
+      osmUrl: `https://www.openstreetmap.org/${element.type}/${element.id}`,
+      tags
+    };
+
+    if (
+      ['school', 'kindergarten', 'university', 'college'].includes(tags.amenity)
+    ) {
+      schools.push({
+        ...item,
+        type: tags.amenity,
+        operator: tags.operator || null
+      });
+
+    } else if (
+      ['hospital', 'clinic', 'doctors', 'dentist', 'pharmacy'].includes(tags.amenity)
+    ) {
+      hospitals.push({
+        ...item,
+        type: tags.amenity,
+        emergency24x7: tags.emergency === '24/7'
+      });
+
+    } else if (
+      tags.railway === 'station' ||
+      tags.railway === 'halt' ||
+      tags.highway === 'bus_stop'
+    ) {
+      transit.push({
+        ...item,
+        type: tags.highway === 'bus_stop'
+          ? 'Bus Stop'
+          : 'Railway Station'
+      });
+
+    } else if (tags.highway) {
+      roads.push({
+        ...item,
+        type: tags.highway
+      });
+
+    } else {
+      otherPlaces.push(item);
+    }
+  });
+
+  const sortByDistance = (items) =>
+    items.sort((a, b) => a.distanceKm - b.distanceKm);
+
+  const totalFeatures =
+    schools.length +
+    hospitals.length +
+    transit.length +
+    roads.length +
+    otherPlaces.length;
+
   const result = {
-    schools: filterAndSortByDistance(nearest.schools, lat, lon, radiusKm),
-    hospitals: filterAndSortByDistance(nearest.hospitals, lat, lon, radiusKm),
-    transit: [
-      ...nearest.publicTransport.metroStations.map(m => ({ ...m, type: 'Metro Station', isMetro: true })),
-      ...nearest.publicTransport.busStops.map(b => ({ ...b, type: 'Bus Stop', isBus: true }))
-    ].map(item => ({
-      ...item,
-      distanceKm: item.distanceKm || calculateDistanceKm(lat, lon, nearest.lat, nearest.lon) + 0.3
-    })).filter(item => item.distanceKm <= radiusKm),
-    isLive: false,
-    curatedFrom: nearest.name
+    schools: sortByDistance(schools),
+    hospitals: sortByDistance(hospitals),
+    transit: sortByDistance(transit),
+    roads: sortByDistance(roads),
+    otherPlaces: sortByDistance(otherPlaces),
+
+    isLive: true,
+    status: totalFeatures > 0 ? 'live' : 'empty',
+
+    source: 'OpenStreetMap',
+    endpoint: successfulEndpoint,
+    fetchedAt: new Date().toISOString(),
+
+    searchedLocation: {
+      lat: latitude,
+      lon: longitude,
+      radiusKm: radius
+    }
   };
 
+  // Cache only successful server responses.
   memoryCache.set(cacheKey, result);
-  return result;
-}
 
-function findNearestCuratedNeighborhood(lat, lon) {
-  let best = DEMO_NEIGHBORHOODS[0];
-  let minD = Infinity;
-  for (const n of DEMO_NEIGHBORHOODS) {
-    const d = calculateDistanceKm(lat, lon, n.lat, n.lon);
-    if (d < minD) {
-      minD = d;
-      best = n;
-    }
-  }
-  return best;
+  return result;
 }

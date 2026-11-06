@@ -1,5 +1,14 @@
+
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, Popup, useMap, useMapEvents } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Circle,
+  Popup,
+  useMap,
+  useMapEvents
+} from 'react-leaflet';
 import L from 'leaflet';
 import { formatDistance } from '../utils/distance';
 
@@ -33,50 +42,101 @@ const createSvgIcon = (bgColor, iconText) => {
   });
 };
 
-const propertyIcon = createSvgIcon('#B94D3D', 'H'); // Terracotta Home
-const schoolIcon = createSvgIcon('#5B84B1', 'S');    // School
-const hospitalIcon = createSvgIcon('#D97A68', '+');  // Hospital / Healthcare
-const transitIcon = createSvgIcon('#E9BD55', 'T');   // Transit / Metro
+const propertyIcon = createSvgIcon('#B94D3D', 'H');
+const schoolIcon = createSvgIcon('#5B84B1', 'S');
+const hospitalIcon = createSvgIcon('#D97A68', '+');
+const transitIcon = createSvgIcon('#E9BD55', 'T');
+
+// Convert API coordinates into valid numeric coordinates.
+const getCoordinates = (item) => {
+  const latitude = Number(item?.lat ?? item?.latitude);
+  const longitude = Number(item?.lon ?? item?.longitude);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return [latitude, longitude];
+};
 
 function MapCenterController({ center, radiusKm }) {
   const map = useMap();
+
   useEffect(() => {
-    if (center && center[0] && center[1]) {
-      map.setView(center, radiusKm > 3 ? 13 : radiusKm > 1 ? 14 : 15);
+    if (
+      center &&
+      Number.isFinite(center[0]) &&
+      Number.isFinite(center[1])
+    ) {
+      const zoom = radiusKm > 3 ? 13 : radiusKm > 1 ? 14 : 15;
+      map.setView(center, zoom);
     }
   }, [center, radiusKm, map]);
+
   return null;
 }
 
 function MapClickHandler({ onMapClick }) {
   useMapEvents({
-    click(e) {
+    click(event) {
       if (onMapClick) {
-        onMapClick(e.latlng.lat, e.latlng.lng);
+        onMapClick(event.latlng.lat, event.latlng.lng);
       }
     }
   });
+
   return null;
 }
 
 export default function LocationMap({
   lat = 28.5244,
   lon = 77.1588,
-  radiusKm = 2.0,
-  propertyName = "Selected Property",
+  radiusKm = 2,
+  propertyName = 'Selected Property',
   schools = [],
   hospitals = [],
   transit = [],
   onLocationChange
 }) {
-  const position = [lat, lon];
-  const radiusMeters = radiusKm * 1000;
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+
+  const validCenter =
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180;
+
+  if (!validCenter) {
+    return (
+      <div className="leaflet-map-wrapper">
+        <p>Map unavailable: the selected location has invalid coordinates.</p>
+      </div>
+    );
+  }
+
+  const position = [latitude, longitude];
+  const safeRadius = Number.isFinite(Number(radiusKm))
+    ? Math.max(0, Number(radiusKm))
+    : 2;
+
+  const radiusMeters = safeRadius * 1000;
+  const zoom = safeRadius > 3 ? 13 : safeRadius > 1 ? 14 : 15;
 
   return (
     <div className="leaflet-map-wrapper">
       <MapContainer
         center={position}
-        zoom={radiusKm > 3 ? 13 : radiusKm > 1 ? 14 : 15}
+        zoom={zoom}
         scrollWheelZoom={false}
         style={{ height: '100%', width: '100%' }}
       >
@@ -85,22 +145,30 @@ export default function LocationMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <MapCenterController center={position} radiusKm={radiusKm} />
+        <MapCenterController
+          center={position}
+          radiusKm={safeRadius}
+        />
+
         <MapClickHandler onMapClick={onLocationChange} />
 
-        {/* Selected Property Marker */}
         <Marker position={position} icon={propertyIcon}>
           <Popup>
             <div style={{ textAlign: 'center', padding: '4px' }}>
-              <strong style={{ color: '#B94D3D' }}>{propertyName}</strong>
-              <div style={{ fontSize: '11px', color: '#82756C', marginTop: '2px' }}>
-                Center of {radiusKm} km analysis zone
+              <strong style={{ color: '#B94D3D' }}>
+                {propertyName}
+              </strong>
+              <div style={{
+                fontSize: '11px',
+                color: '#82756C',
+                marginTop: '2px'
+              }}>
+                Center of {safeRadius} km analysis zone
               </div>
             </div>
           </Popup>
         </Marker>
 
-        {/* Radius Boundary Circle */}
         <Circle
           center={position}
           radius={radiusMeters}
@@ -113,18 +181,22 @@ export default function LocationMap({
           }}
         />
 
-        {/* Nearby Schools */}
-        {schools.map((item, idx) => {
-          const sLat = item.lat || item.latitude;
-          const sLon = item.lon || item.longitude;
-          if (!sLat || !sLon) return null;
+        {schools.map((item, index) => {
+          const coordinates = getCoordinates(item);
+          if (!coordinates) return null;
+
           return (
-            <Marker key={`school-${idx}`} position={[sLat, sLon]} icon={schoolIcon}>
+            <Marker
+              key={`school-${item.id ?? index}`}
+              position={coordinates}
+              icon={schoolIcon}
+            >
               <Popup>
                 <div>
-                  <strong>{item.name}</strong>
+                  <strong>{item.name || 'School'}</strong>
                   <div style={{ fontSize: '12px', color: '#554A42' }}>
-                    Type: {item.type || 'School'} | Distance: {formatDistance(item.distanceKm)}
+                    Type: {item.type || 'School'} |
+                    Distance: {formatDistance(item.distanceKm)}
                   </div>
                 </div>
               </Popup>
@@ -132,18 +204,22 @@ export default function LocationMap({
           );
         })}
 
-        {/* Nearby Hospitals */}
-        {hospitals.map((item, idx) => {
-          const hLat = item.lat || item.latitude;
-          const hLon = item.lon || item.longitude;
-          if (!hLat || !hLon) return null;
+        {hospitals.map((item, index) => {
+          const coordinates = getCoordinates(item);
+          if (!coordinates) return null;
+
           return (
-            <Marker key={`hosp-${idx}`} position={[hLat, hLon]} icon={hospitalIcon}>
+            <Marker
+              key={`hospital-${item.id ?? index}`}
+              position={coordinates}
+              icon={hospitalIcon}
+            >
               <Popup>
                 <div>
-                  <strong>{item.name}</strong>
+                  <strong>{item.name || 'Hospital'}</strong>
                   <div style={{ fontSize: '12px', color: '#554A42' }}>
-                    {item.type || 'Hospital'} | Distance: {formatDistance(item.distanceKm)}
+                    {item.type || 'Hospital'} |
+                    Distance: {formatDistance(item.distanceKm)}
                   </div>
                 </div>
               </Popup>
@@ -151,18 +227,22 @@ export default function LocationMap({
           );
         })}
 
-        {/* Nearby Transit Stops */}
-        {transit.map((item, idx) => {
-          const tLat = item.lat || item.latitude;
-          const tLon = item.lon || item.longitude;
-          if (!tLat || !tLon) return null;
+        {transit.map((item, index) => {
+          const coordinates = getCoordinates(item);
+          if (!coordinates) return null;
+
           return (
-            <Marker key={`transit-${idx}`} position={[tLat, tLon]} icon={transitIcon}>
+            <Marker
+              key={`transit-${item.id ?? index}`}
+              position={coordinates}
+              icon={transitIcon}
+            >
               <Popup>
                 <div>
-                  <strong>{item.name}</strong>
+                  <strong>{item.name || 'Transit Stop'}</strong>
                   <div style={{ fontSize: '12px', color: '#554A42' }}>
-                    {item.line || item.type || 'Transit Stop'} | Distance: {formatDistance(item.distanceKm)}
+                    {item.line || item.type || 'Transit Stop'} |
+                    Distance: {formatDistance(item.distanceKm)}
                   </div>
                 </div>
               </Popup>

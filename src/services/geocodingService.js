@@ -3,7 +3,7 @@ import { DEMO_NEIGHBORHOODS } from '../data/demoNeighborhoods';
 const NOMINATIM_BASE = import.meta.env.VITE_NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org';
 
 // Approximate Delhi NCR Bounding Box: minLon, minLat, maxLon, maxLat
-const DELHI_NCR_VIEWBOX = '76.80,28.20,77.70,28.95';
+const DELHI_NCR_VIEWBOX = '76.80,28.95,77.70,28.20';
 
 /**
  * Searches locations using OpenStreetMap Nominatim with rate-limit respect and fallback

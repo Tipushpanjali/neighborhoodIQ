@@ -8,6 +8,7 @@ import {
   Building2,
   Train,
   Navigation,
+  Route,
   HardHat,
   Droplets,
   Volume2,
@@ -129,7 +130,17 @@ longitude: lon,
     );
   }
 
-  const { overview, airQuality, schools, hospitals, transit, infrastructure, utility, environmental } = reportData;
+  const {
+  overview,
+  airQuality,
+  schools,
+  hospitals,
+  transit,
+  roads,
+  infrastructure,
+  utility,
+  environmental
+} = reportData;
   const aqiInfo = getAQIInfo(airQuality.aqi);
 
   return (
@@ -354,6 +365,31 @@ longitude: lon,
               maxItems={4}
             />
           </CategoryCard>
+            
+{/* Nearby Roads Card */}
+<CategoryCard
+  title="Nearby Roads & Road Network"
+  icon={Route}
+  iconColor="#6D9274"
+  iconBg="#EFF5F0"
+  badgeText={`${roads.items.length} mapped road segments`}
+  evidence={roads.evidence}
+>
+  <p style={{
+    fontSize: '0.8rem',
+    color: '#82756C',
+    marginBottom: '12px'
+  }}>
+    Road segments mapped by OpenStreetMap within {radiusKm} km
+    of the selected property.
+  </p>
+
+  <NearbyPlacesList
+    items={roads.items}
+    emptyMessage={`No mapped roads found within ${radiusKm} km. This may indicate incomplete OpenStreetMap coverage.`}
+    maxItems={5}
+  />
+</CategoryCard>
 
           {/* 5. Traffic & Commute Card */}
           <CategoryCard

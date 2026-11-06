@@ -29,6 +29,16 @@ export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all'
       const utility = getUtilityObservations(lat, lon);
       const environmental = getEnvironmentalIncidents(lat, lon);
 
+      const osmStatus =
+  places.status === 'live' ? 'Verified' : 'Data Unavailable';
+
+const osmLimitations =
+  places.status === 'error'
+    ? `OpenStreetMap request failed: ${places.errorMessage || 'Unknown error'}`
+    : places.status === 'empty'
+      ? 'OpenStreetMap returned no mapped features within the selected radius. This does not prove that no facilities exist.'
+      : 'OpenStreetMap is community-maintained. Some facilities and roads may be missing or outdated.';
+
       // Determine category confidence levels
       const aqConfidence = calculateConfidenceScore({
         sourceType: 'regulatory',
@@ -80,6 +90,7 @@ export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all'
         radiusKm,
         timestamp: new Date().toISOString(),
         overview: {
+          roadsCount: (places.roads || []).length,
           schoolsCount: places.schools.length,
           hospitalsCount: places.hospitals.length,
           transitStopsCount: places.transit.length,
@@ -95,35 +106,45 @@ export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all'
           items: places.schools,
           confidence: schoolsConfidence,
           evidence: {
-            sourceName: places.isLive ? 'OpenStreetMap & UDISE+ Registry' : 'UDISE+ National School Directory',
-            sourceUrl: 'https://www.udiseplus.gov.in/',
-            status: places.isLive ? 'Verified' : 'Official (Curated)',
-            coverage: `Within ${radiusKm} km radius of selected property`,
-            limitations: 'UDISE+ records official recognition and affiliation. Subjective feedback and faculty turnover are not represented.'
-          }
+  sourceName: 'OpenStreetMap',
+  sourceUrl: 'https://www.openstreetmap.org/',
+  status: osmStatus,
+  coverage: `Within ${radiusKm} km of the searched property`,
+  limitations: osmLimitations
+}
         },
         hospitals: {
           items: places.hospitals,
           confidence: hospitalsConfidence,
           evidence: {
-            sourceName: places.isLive ? 'OpenStreetMap & ABDM Health Facility Registry' : 'National Health Facility Registry (MoHFW)',
-            sourceUrl: 'https://facility.abdm.gov.in/',
-            status: places.isLive ? 'Verified' : 'Official (Curated)',
-            coverage: `Within ${radiusKm} km radius of property`,
-            limitations: 'Distance reflects physical transit accessibility. Bed occupancy and emergency triage speeds fluctuate daily.'
-          }
+  sourceName: 'OpenStreetMap',
+  sourceUrl: 'https://www.openstreetmap.org/',
+  status: osmStatus,
+  coverage: `Within ${radiusKm} km of the searched property`,
+  limitations: osmLimitations
+}
         },
         transit: {
           items: places.transit,
           confidence: transitConfidence,
           evidence: {
-            sourceName: 'Delhi Metro (DMRC) & Open Transit Data Delhi',
-            sourceUrl: 'https://otd.delhi.gov.in/documentation/',
-            status: 'Verified',
-            coverage: 'Metro stations & DTC/DIMTS bus stops',
-            limitations: 'Bus arrival punctuality is subject to street congestion; feeder autos or e-rickshaws provide first/last-mile links.'
-          }
+  sourceName: 'OpenStreetMap',
+  sourceUrl: 'https://www.openstreetmap.org/',
+  status: osmStatus,
+  coverage: `Within ${radiusKm} km of the searched property`,
+  limitations: osmLimitations
+}
         },
+        roads: {
+  items: places.roads || [],
+  evidence: {
+    sourceName: 'OpenStreetMap',
+    sourceUrl: 'https://www.openstreetmap.org/',
+    status: osmStatus,
+    coverage: `Within ${radiusKm} km of the searched property`,
+    limitations: osmLimitations
+  }
+},
         infrastructure: {
           items: infrastructure,
           confidence: infraConfidence,
