@@ -1,11 +1,42 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchNearbyPlaces } from '../services/placesService';
+import { fetchColleges } from '../services/collegeService';
 import { fetchAirQualityData } from '../services/airQualityService';
 import { getNearbyInfrastructureProjects, getEnvironmentalIncidents } from '../services/infrastructureService';
 import { getUtilityObservations } from '../services/utilityService';
 import { calculateConfidenceScore } from '../utils/confidence';
 
-export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all') {
+function getCollegeSearchQuery(propertyName = '') {
+  const location = propertyName
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!location) {
+    return null;
+  }
+
+  const lowerLocation = location.toLowerCase();
+
+  // Keep the full locality if an NCR city is already included.
+  const knownCities = [
+    'delhi',
+    'noida',
+    'greater noida',
+    'gurugram',
+    'gurgaon',
+    'ghaziabad',
+    'faridabad'
+  ];
+
+  const hasCity = knownCities.some(city =>
+    lowerLocation.includes(city)
+  );
+
+  // If no city is included, assume the locality is in Delhi.
+  return hasCity ? location : `${location}, Delhi`;
+}
+
+export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all', propertyName = '') {
   const [reportData, setReportData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,10 +51,22 @@ export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all'
     setError(null);
 
     try {
-      const [places, airQuality] = await Promise.all([
-        fetchNearbyPlaces(lat, lon, radiusKm),
-        fetchAirQualityData(lat, lon)
-      ]);
+      const collegeQuery = getCollegeSearchQuery(propertyName);
+
+const [places, airQuality, colleges] = await Promise.all([
+  fetchNearbyPlaces(lat, lon, radiusKm),
+  fetchAirQualityData(lat, lon),
+
+  collegeQuery
+    ? fetchColleges(collegeQuery)
+    : Promise.resolve({
+        items: [],
+        status: 'not_searched',
+        source: 'CollegeDB',
+        errorMessage: 'Could not identify the selected city.',
+        fetchedAt: null
+      })
+]);
 
       const infrastructure = getNearbyInfrastructureProjects(lat, lon, 15.0);
       const utility = getUtilityObservations(lat, lon);
@@ -33,12 +76,13 @@ export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all'
   places.status === 'live' ? 'Verified' : 'Data Unavailable';
 
 const osmLimitations =
-  places.status === 'error'
-    ? `OpenStreetMap request failed: ${places.errorMessage || 'Unknown error'}`
-    : places.status === 'empty'
-      ? 'OpenStreetMap returned no mapped features within the selected radius. This does not prove that no facilities exist.'
-      : 'OpenStreetMap is community-maintained. Some facilities and roads may be missing or outdated.';
-
+  places.status === 'disabled'
+    ? places.errorMessage
+    : places.status === 'error'
+      ? `OpenStreetMap request failed: ${places.errorMessage || 'Unknown error'}`
+      : places.status === 'empty'
+        ? 'OpenStreetMap returned no mapped features within the selected radius. This does not prove that no facilities exist.'
+        : 'OpenStreetMap is community-maintained. Some facilities and roads may be missing or outdated.';
       // Determine category confidence levels
       const aqConfidence = calculateConfidenceScore({
         sourceType: 'regulatory',
@@ -103,8 +147,28 @@ const osmLimitations =
           confidence: aqConfidence
         },
         schools: {
-          items: places.schools,
-          confidence: schoolsConfidence,
+  items: places.schools,
+  colleges: colleges.items,
+  collegeStatus: colleges.status,
+  collegeQuery: collegeQuery,
+
+  collegeEvidence: {
+    sourceName: 'CollegeDB',
+    sourceUrl: 'https://collegedb.in/',
+    status:
+      colleges.status === 'live'
+        ? 'Verified'
+        : colleges.status === 'empty'
+          ? 'No results'
+          : 'Data Unavailable',
+    coverage: collegeQuery
+      ? `City-level search for ${collegeQuery}`
+      : 'City could not be identified',
+    limitations:
+      'CollegeDB provides up to five search matches. Results are city-level, not verified within the selected property radius. Geographic coordinates and distances are not provided by this search response.'
+  },
+
+  confidence: schoolsConfidence,
           evidence: {
   sourceName: 'OpenStreetMap',
   sourceUrl: 'https://www.openstreetmap.org/',
@@ -187,7 +251,7 @@ const osmLimitations =
     } finally {
       setIsLoading(false);
     }
-  }, [lat, lon, radiusKm]);
+  }, [lat, lon, radiusKm, propertyName]);
 
   useEffect(() => {
     loadReport();

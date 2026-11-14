@@ -60,6 +60,15 @@ export async function fetchNearbyPlaces(lat, lon, radiusKm = 2) {
   ) {
     throw new Error('Invalid location coordinates or search radius.');
   }
+  // Overpass requests temporarily disabled.
+// This prevents repeated requests to unavailable servers.
+return emptyResult(
+  latitude,
+  longitude,
+  radius,
+  'disabled',
+  'OpenStreetMap Overpass requests are temporarily disabled while local OSM data integration is being prepared.'
+);
 
   const cacheKey = `${latitude.toFixed(5)}_${longitude.toFixed(5)}_${radius}`;
 

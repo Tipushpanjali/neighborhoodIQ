@@ -58,7 +58,13 @@ export default function NeighborhoodReport() {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
-  const { reportData, isLoading, error, refetch } = useNeighborhoodReport(lat, lon, radiusKm, selectedPriority);
+  const { reportData, isLoading, error, refetch } = useNeighborhoodReport(
+  lat,
+  lon,
+  radiusKm,
+  selectedPriority,
+  propertyName
+);
 
   const handleRadiusChange = (newRadius) => {
     navigate(`/report?lat=${lat}&lon=${lon}&radius=${newRadius}&name=${encodeURIComponent(propertyName)}`);
@@ -329,6 +335,111 @@ longitude: lon,
               emptyMessage={`No official schools found in the ${radiusKm} km boundary. Expand radius to 5 km.`}
               maxItems={4}
             />
+            {/* CollegeDB College Search Results */}
+<div style={{
+  marginTop: '20px',
+  paddingTop: '16px',
+  borderTop: '1px solid #E8DCCB'
+}}>
+  <div style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '12px'
+  }}>
+    <h4 style={{
+      fontSize: '1rem',
+      color: '#392E29',
+      margin: 0
+    }}>
+      Colleges in {schools.collegeQuery || 'Selected Area'}
+    </h4>
+
+    <span style={{
+      fontSize: '0.75rem',
+      color: '#82756C'
+    }}>
+      CollegeDB
+    </span>
+  </div>
+
+  {schools.collegeStatus === 'live' && (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px'
+    }}>
+      {schools.colleges.map((college) => (
+        <div
+          key={college.id}
+          style={{
+            padding: '12px 14px',
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #E8DCCB',
+            borderRadius: '12px'
+          }}
+        >
+          <div style={{
+            fontWeight: 600,
+            fontSize: '0.9rem',
+            color: '#392E29'
+          }}>
+            {college.name}
+          </div>
+
+          <div style={{
+            fontSize: '0.78rem',
+            color: '#82756C',
+            marginTop: '4px'
+          }}>
+            {college.city}, {college.state}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {schools.collegeStatus === 'empty' && (
+    <p style={{ color: '#82756C', fontSize: '0.85rem' }}>
+      CollegeDB returned no matching colleges for this city.
+    </p>
+  )}
+
+  {schools.collegeStatus === 'error' && (
+    <p style={{ color: '#B94D3D', fontSize: '0.85rem' }}>
+      CollegeDB is currently unavailable. Please try again later.
+    </p>
+  )}
+
+  {schools.collegeStatus === 'not_searched' && (
+    <p style={{ color: '#82756C', fontSize: '0.85rem' }}>
+      College search is unavailable because the selected city
+      could not be identified.
+    </p>
+  )}
+
+  <div style={{
+    marginTop: '12px',
+    fontSize: '0.76rem',
+    color: '#82756C',
+    lineHeight: 1.6
+  }}>
+    Source: <a
+      href="https://collegedb.in/"
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ color: '#B94D3D' }}
+    >
+      CollegeDB
+    </a>
+
+    <br />
+
+    These are city-level search results, not colleges
+    verified within your selected radius. Maximum five
+    results are returned by the search endpoint.
+  </div>
+</div>
           </CategoryCard>
 
           {/* 3. Hospitals Card */}
