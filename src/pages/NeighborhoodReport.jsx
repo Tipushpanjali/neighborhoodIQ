@@ -327,14 +327,162 @@ longitude: lon,
             icon={GraduationCap}
             iconColor="#5B84B1"
             iconBg="#EDF3F9"
-            badgeText={`${schools.items.length} recognized schools within ${radiusKm} km`}
+            badgeText={`${schools.datasetItems?.length || 0} Delhi school matches`}
             evidence={schools.evidence}
           >
-            <NearbyPlacesList
-              items={schools.items}
-              emptyMessage={`No official schools found in the ${radiusKm} km boundary. Expand radius to 5 km.`}
-              maxItems={4}
-            />
+           
+
+{/* Delhi School Dataset Results */}
+<div
+  style={{
+    marginTop: '20px',
+    paddingTop: '16px',
+    borderTop: '1px solid #E8DCCB'
+  }}
+>
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '12px'
+    }}
+  >
+    <h4 style={{
+      fontSize: '1rem',
+      color: '#392E29',
+      margin: 0
+    }}>
+      Schools in {schools.datasetQuery || 'Selected Area'}
+    </h4>
+
+    <span style={{
+      fontSize: '0.75rem',
+      color: '#82756C'
+    }}>
+      Delhi School Dataset
+    </span>
+  </div>
+
+  {schools.datasetStatus === 'live' &&
+    schools.datasetItems?.length > 0 && (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+      }}>
+        {schools.datasetItems.map((school) => (
+          <div
+            key={school.id}
+            style={{
+              padding: '12px 14px',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #E8DCCB',
+              borderRadius: '12px'
+            }}
+          >
+            <div style={{
+              fontWeight: 600,
+              fontSize: '0.9rem',
+              color: '#392E29'
+            }}>
+              {school.name}
+            </div>
+
+            <div style={{
+              fontSize: '0.8rem',
+              color: '#82756C',
+              marginTop: '5px',
+              lineHeight: 1.5
+            }}>
+              <MapPin
+                size={13}
+                style={{
+                  display: 'inline',
+                  verticalAlign: 'middle',
+                  marginRight: '4px'
+                }}
+              />
+              {school.address}
+            </div>
+
+            {school.mobile && (
+              <div style={{
+                fontSize: '0.8rem',
+                color: '#554A42',
+                marginTop: '6px'
+              }}>
+                Phone: {school.mobile}
+              </div>
+            )}
+
+            {school.website && (
+              <div style={{ marginTop: '7px' }}>
+                <a
+                  href={school.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: '#B94D3D',
+                    fontSize: '0.8rem',
+                    textDecoration: 'none',
+                    fontWeight: 600
+                  }}
+                >
+                  Visit School Website <ExternalLink
+                    size={12}
+                    style={{
+                      display: 'inline',
+                      verticalAlign: 'middle'
+                    }}
+                  />
+                </a>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
+
+  {schools.datasetStatus === 'empty' && (
+    <p style={{
+      fontSize: '0.85rem',
+      color: '#82756C'
+    }}>
+      No matching schools were found in the Delhi school dataset.
+    </p>
+  )}
+
+  {schools.datasetStatus === 'error' && (
+    <p style={{
+      fontSize: '0.85rem',
+      color: '#B94D3D'
+    }}>
+      Unable to retrieve Delhi school records. Please try again.
+    </p>
+  )}
+
+  {schools.datasetStatus === 'not_searched' && (
+    <p style={{
+      fontSize: '0.85rem',
+      color: '#82756C'
+    }}>
+      The Delhi school dataset is not searched because the selected area is outside its identified coverage.
+    </p>
+  )}
+
+  <p style={{
+    marginTop: '12px',
+    fontSize: '0.76rem',
+    color: '#82756C',
+    lineHeight: 1.6
+  }}>
+    Source: Delhi School Dataset (732 records).
+    These are the top five address-text matches, not verified
+    geographically nearest schools. Distances are currently unavailable.
+  </p>
+</div>
+
             {/* CollegeDB College Search Results */}
 <div style={{
   marginTop: '20px',

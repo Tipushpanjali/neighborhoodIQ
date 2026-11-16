@@ -1,8 +1,13 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { fetchNearbyPlaces } from '../services/placesService';
 import { fetchColleges } from '../services/collegeService';
+import { fetchDelhiSchools } from '../services/delhiSchoolService';
 import { fetchAirQualityData } from '../services/airQualityService';
-import { getNearbyInfrastructureProjects, getEnvironmentalIncidents } from '../services/infrastructureService';
+import {
+  getNearbyInfrastructureProjects,
+  getEnvironmentalIncidents
+} from '../services/infrastructureService';
 import { getUtilityObservations } from '../services/utilityService';
 import { calculateConfidenceScore } from '../utils/confidence';
 
@@ -17,7 +22,6 @@ function getCollegeSearchQuery(propertyName = '') {
 
   const lowerLocation = location.toLowerCase();
 
-  // Keep the full locality if an NCR city is already included.
   const knownCities = [
     'delhi',
     'noida',
@@ -32,11 +36,16 @@ function getCollegeSearchQuery(propertyName = '') {
     lowerLocation.includes(city)
   );
 
-  // If no city is included, assume the locality is in Delhi.
   return hasCity ? location : `${location}, Delhi`;
 }
 
-export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all', propertyName = '') {
+export function useNeighborhoodReport(
+  lat,
+  lon,
+  radiusKm = 2.0,
+  priority = 'all',
+  propertyName = ''
+) {
   const [reportData, setReportData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -53,37 +62,63 @@ export function useNeighborhoodReport(lat, lon, radiusKm = 2.0, priority = 'all'
     try {
       const collegeQuery = getCollegeSearchQuery(propertyName);
 
-const [places, airQuality, colleges] = await Promise.all([
-  fetchNearbyPlaces(lat, lon, radiusKm),
-  fetchAirQualityData(lat, lon),
+      // The school dataset covers Delhi only.
+      const delhiSchoolQuery =
+        collegeQuery &&
+        collegeQuery.toLowerCase().includes('delhi')
+          ? collegeQuery
+          : null;
 
-  collegeQuery
-    ? fetchColleges(collegeQuery)
-    : Promise.resolve({
-        items: [],
-        status: 'not_searched',
-        source: 'CollegeDB',
-        errorMessage: 'Could not identify the selected city.',
-        fetchedAt: null
-      })
-]);
+      const [
+        places,
+        airQuality,
+        colleges,
+        delhiSchools
+      ] = await Promise.all([
+        fetchNearbyPlaces(lat, lon, radiusKm),
 
-      const infrastructure = getNearbyInfrastructureProjects(lat, lon, 15.0);
+        fetchAirQualityData(lat, lon),
+
+        collegeQuery
+          ? fetchColleges(collegeQuery)
+          : Promise.resolve({
+              items: [],
+              status: 'not_searched',
+              source: 'CollegeDB',
+              errorMessage: 'Could not identify the selected city.',
+              fetchedAt: null
+            }),
+
+        delhiSchoolQuery
+          ? fetchDelhiSchools(delhiSchoolQuery)
+          : Promise.resolve({
+              items: [],
+              status: 'not_searched',
+              source: 'Delhi School Dataset',
+              errorMessage: 'The selected city is outside this dataset’s Delhi-only coverage.',
+              fetchedAt: null
+            })
+      ]);
+
+      const infrastructure =
+        getNearbyInfrastructureProjects(lat, lon, 15.0);
+
       const utility = getUtilityObservations(lat, lon);
       const environmental = getEnvironmentalIncidents(lat, lon);
 
       const osmStatus =
-  places.status === 'live' ? 'Verified' : 'Data Unavailable';
+        places.status === 'live' ? 'Verified' : 'Data Unavailable';
 
-const osmLimitations =
-  places.status === 'disabled'
-    ? places.errorMessage
-    : places.status === 'error'
-      ? `OpenStreetMap request failed: ${places.errorMessage || 'Unknown error'}`
-      : places.status === 'empty'
-        ? 'OpenStreetMap returned no mapped features within the selected radius. This does not prove that no facilities exist.'
-        : 'OpenStreetMap is community-maintained. Some facilities and roads may be missing or outdated.';
-      // Determine category confidence levels
+      const osmLimitations =
+        places.status === 'disabled'
+          ? places.errorMessage
+          : places.status === 'error'
+            ? `OpenStreetMap request failed: ${places.errorMessage || 'Unknown error'}`
+            : places.status === 'empty'
+              ? 'OpenStreetMap returned no mapped features within the selected radius. This does not prove that no facilities exist.'
+              : 'OpenStreetMap is community-maintained. Some facilities and roads may be missing or outdated.';
+
+      // Determine category confidence levels.
       const aqConfidence = calculateConfidenceScore({
         sourceType: 'regulatory',
         distanceKm: airQuality.stationDistanceKm,
@@ -91,12 +126,19 @@ const osmLimitations =
         hasDirectReadings: true
       });
 
-      const schoolsConfidence = calculateConfidenceScore({
-        sourceType: places.isLive ? 'open_database' : 'official',
-        distanceKm: places.schools[0]?.distanceKm || 1.0,
-        dataAgeDays: 30,
-        hasDirectReadings: places.schools.length > 0
-      });
+      // School dataset results are text matches, not distance-verified results.
+      const schoolsConfidence = delhiSchools.items.length > 0
+        ? {
+            level: 'Limited',
+            percentage: 40,
+            description: 'Schools matched by locality text. Coordinates and nearest-distance verification are unavailable.'
+          }
+        : calculateConfidenceScore({
+            sourceType: places.isLive ? 'open_database' : 'official',
+            distanceKm: places.schools[0]?.distanceKm || 1.0,
+            dataAgeDays: 30,
+            hasDirectReadings: places.schools.length > 0
+          });
 
       const hospitalsConfidence = calculateConfidenceScore({
         sourceType: places.isLive ? 'open_database' : 'official',
@@ -125,7 +167,7 @@ const osmLimitations =
         hospitalsConfidence.percentage >= 50,
         transitConfidence.percentage >= 50,
         infraConfidence.percentage >= 50,
-        true // utility notices
+        true
       ].filter(Boolean).length;
 
       const report = {
@@ -133,82 +175,116 @@ const osmLimitations =
         lon,
         radiusKm,
         timestamp: new Date().toISOString(),
+
         overview: {
           roadsCount: (places.roads || []).length,
-          schoolsCount: places.schools.length,
+          schoolsCount:
+            places.schools.length + delhiSchools.items.length,
           hospitalsCount: places.hospitals.length,
           transitStopsCount: places.transit.length,
           environmentalStationsCount: 1,
           infrastructureProjectsCount: infrastructure.length,
           reliableCategoriesCount
         },
+
         airQuality: {
           ...airQuality,
           confidence: aqConfidence
         },
+
         schools: {
-  items: places.schools,
-  colleges: colleges.items,
-  collegeStatus: colleges.status,
-  collegeQuery: collegeQuery,
+          // Existing OpenStreetMap school results.
+          items: places.schools,
 
-  collegeEvidence: {
-    sourceName: 'CollegeDB',
-    sourceUrl: 'https://collegedb.in/',
-    status:
-      colleges.status === 'live'
-        ? 'Verified'
-        : colleges.status === 'empty'
-          ? 'No results'
-          : 'Data Unavailable',
-    coverage: collegeQuery
-      ? `City-level search for ${collegeQuery}`
-      : 'City could not be identified',
-    limitations:
-      'CollegeDB provides up to five search matches. Results are city-level, not verified within the selected property radius. Geographic coordinates and distances are not provided by this search response.'
-  },
+          // New Delhi school dataset results.
+          datasetItems: delhiSchools.items,
+          datasetStatus: delhiSchools.status,
+          datasetQuery: delhiSchoolQuery,
 
-  confidence: schoolsConfidence,
+          datasetEvidence: {
+            sourceName: 'Delhi School Dataset',
+            status:
+              delhiSchools.status === 'live'
+                ? 'Available'
+                : delhiSchools.status === 'empty'
+                  ? 'No matching records'
+                  : delhiSchools.status === 'not_searched'
+                    ? 'Not searched'
+                    : 'Data Unavailable',
+            coverage: delhiSchoolQuery
+              ? `Delhi locality text search: ${delhiSchoolQuery}`
+              : 'Delhi-only dataset. The selected city is outside its identified coverage.',
+            limitations:
+              'Shows up to five address-text matches from the Delhi school dataset. These are not verified geographically nearest schools. Coordinates and distances are currently unavailable.'
+          },
+
+          // Existing CollegeDB results.
+          colleges: colleges.items,
+          collegeStatus: colleges.status,
+          collegeQuery: collegeQuery,
+
+          collegeEvidence: {
+            sourceName: 'CollegeDB',
+            sourceUrl: 'https://collegedb.in/',
+            status:
+              colleges.status === 'live'
+                ? 'Verified'
+                : colleges.status === 'empty'
+                  ? 'No results'
+                  : 'Data Unavailable',
+            coverage: collegeQuery
+              ? `Search matches for ${collegeQuery}`
+              : 'City could not be identified',
+            limitations:
+              'CollegeDB provides up to five search matches. Results are not verified within the selected property radius. Geographic coordinates and distances are not provided by this search response.'
+          },
+
+          confidence: schoolsConfidence,
+
           evidence: {
-  sourceName: 'OpenStreetMap',
-  sourceUrl: 'https://www.openstreetmap.org/',
-  status: osmStatus,
-  coverage: `Within ${radiusKm} km of the searched property`,
-  limitations: osmLimitations
-}
+            sourceName: 'OpenStreetMap',
+            sourceUrl: 'https://www.openstreetmap.org/',
+            status: osmStatus,
+            coverage: `Within ${radiusKm} km of the searched property`,
+            limitations: osmLimitations
+          }
         },
+
         hospitals: {
           items: places.hospitals,
           confidence: hospitalsConfidence,
           evidence: {
-  sourceName: 'OpenStreetMap',
-  sourceUrl: 'https://www.openstreetmap.org/',
-  status: osmStatus,
-  coverage: `Within ${radiusKm} km of the searched property`,
-  limitations: osmLimitations
-}
+            sourceName: 'OpenStreetMap',
+            sourceUrl: 'https://www.openstreetmap.org/',
+            status: osmStatus,
+            coverage: `Within ${radiusKm} km of the searched property`,
+            limitations: osmLimitations
+          }
         },
+
         transit: {
           items: places.transit,
           confidence: transitConfidence,
           evidence: {
-  sourceName: 'OpenStreetMap',
-  sourceUrl: 'https://www.openstreetmap.org/',
-  status: osmStatus,
-  coverage: `Within ${radiusKm} km of the searched property`,
-  limitations: osmLimitations
-}
+            sourceName: 'OpenStreetMap',
+            sourceUrl: 'https://www.openstreetmap.org/',
+            status: osmStatus,
+            coverage: `Within ${radiusKm} km of the searched property`,
+            limitations: osmLimitations
+          }
         },
+
         roads: {
-  items: places.roads || [],
-  evidence: {
-    sourceName: 'OpenStreetMap',
-    sourceUrl: 'https://www.openstreetmap.org/',
-    status: osmStatus,
-    coverage: `Within ${radiusKm} km of the searched property`,
-    limitations: osmLimitations
-  }
-},
+          items: places.roads || [],
+          evidence: {
+            sourceName: 'OpenStreetMap',
+            sourceUrl: 'https://www.openstreetmap.org/',
+            status: osmStatus,
+            coverage: `Within ${radiusKm} km of the searched property`,
+            limitations: osmLimitations
+          }
+        },
+
         infrastructure: {
           items: infrastructure,
           confidence: infraConfidence,
@@ -220,9 +296,14 @@ const osmLimitations =
             limitations: 'Project completion targets are subject to land acquisition, seasonal construction bans (GRAP), and budgetary milestones.'
           }
         },
+
         utility: {
           data: utility,
-          confidence: { level: 'Moderate', percentage: 70, description: 'Official municipal discom and water board notices.' },
+          confidence: {
+            level: 'Moderate',
+            percentage: 70,
+            description: 'Official municipal discom and water board notices.'
+          },
           evidence: {
             sourceName: 'Delhi Jal Board / GMDA & Regional Power Discoms',
             sourceUrl: 'https://delhijalboard.delhi.gov.in/',
@@ -231,9 +312,14 @@ const osmLimitations =
             limitations: 'Represents broad municipal ward schedules. Internal building overhead tanks and booster pumps affect water availability.'
           }
         },
+
         environmental: {
           incidents: environmental,
-          confidence: { level: 'High', percentage: 85, description: 'Statutory hydrological flood maps and CPCB noise zoning standards.' },
+          confidence: {
+            level: 'High',
+            percentage: 85,
+            description: 'Statutory hydrological flood maps and CPCB noise zoning standards.'
+          },
           evidence: {
             sourceName: 'Central Pollution Control Board & Central Water Commission',
             sourceUrl: 'https://cpcb.nic.in/noise-pollution/',
@@ -245,9 +331,11 @@ const osmLimitations =
       };
 
       setReportData(report);
+
     } catch (err) {
       console.error('Error generating neighborhood report:', err);
       setError('Unable to load neighborhood intelligence data. Please verify your connection or click retry.');
+
     } finally {
       setIsLoading(false);
     }
