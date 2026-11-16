@@ -713,9 +713,9 @@ const aqiInfo = ({
             badgeText={`${hospitals.items.length} facilities in radius`}
             evidence={hospitals.evidence}
           >
-            <div style={{ fontSize: '0.8rem', color: '#82756C', marginBottom: '10px', fontStyle: 'italic' }}>
-              Note: Distance reflects emergency transit accessibility, not clinical quality or bed occupancy.
-            </div>
+           <div style={{ fontSize: '0.8rem', color: '#82756C', marginBottom: '10px', fontStyle: 'italic' }}>
+  Note: Distance represents approximate straight-line distance from the selected property, not road travel distance, emergency response time, clinical quality, or bed occupancy.
+</div>
             <NearbyPlacesList
               items={hospitals.items}
               emptyMessage={`No hospitals recorded within ${radiusKm} km. Try 5 km radius.`}

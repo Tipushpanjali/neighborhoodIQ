@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchNearbyPlaces } from '../services/placesService';
 import { fetchColleges } from '../services/collegeService';
 import { fetchDelhiSchools } from '../services/delhiSchoolService';
+import { fetchNearbyHospitals } from '../services/hospitalService';
 import { fetchAirQualityData } from '../services/airQualityService';
 import {
   getNearbyInfrastructureProjects,
@@ -69,36 +70,36 @@ export function useNeighborhoodReport(
           ? collegeQuery
           : null;
 
-      const [
-        places,
-        airQuality,
-        colleges,
-        delhiSchools
-      ] = await Promise.all([
-        fetchNearbyPlaces(lat, lon, radiusKm),
 
-        fetchAirQualityData(lat, lon),
-
-        collegeQuery
-          ? fetchColleges(collegeQuery)
-          : Promise.resolve({
-              items: [],
-              status: 'not_searched',
-              source: 'CollegeDB',
-              errorMessage: 'Could not identify the selected city.',
-              fetchedAt: null
-            }),
-
-        delhiSchoolQuery
-          ? fetchDelhiSchools(delhiSchoolQuery)
-          : Promise.resolve({
-              items: [],
-              status: 'not_searched',
-              source: 'Delhi School Dataset',
-              errorMessage: 'The selected city is outside this dataset’s Delhi-only coverage.',
-              fetchedAt: null
-            })
-      ]);
+const [
+  places,
+  airQuality,
+  colleges,
+  delhiSchools,
+  hospitalsData
+] = await Promise.all([
+  fetchNearbyPlaces(lat, lon, radiusKm),
+  fetchAirQualityData(lat, lon),
+  collegeQuery
+    ? fetchColleges(collegeQuery)
+    : Promise.resolve({
+        items: [],
+        status: 'not_searched',
+        source: 'CollegeDB',
+        errorMessage: 'Could not identify the selected city.',
+        fetchedAt: null
+      }),
+  delhiSchoolQuery
+    ? fetchDelhiSchools(delhiSchoolQuery)
+    : Promise.resolve({
+        items: [],
+        status: 'not_searched',
+        source: 'Delhi School Dataset',
+        errorMessage: 'The selected city is outside this dataset’s Delhi-only coverage.',
+        fetchedAt: null
+      }),
+  fetchNearbyHospitals(lat, lon, radiusKm)
+]);
 
       const infrastructure =
         getNearbyInfrastructureProjects(lat, lon, 15.0);
@@ -140,12 +141,17 @@ export function useNeighborhoodReport(
             hasDirectReadings: places.schools.length > 0
           });
 
-      const hospitalsConfidence = calculateConfidenceScore({
-        sourceType: places.isLive ? 'open_database' : 'official',
-        distanceKm: places.hospitals[0]?.distanceKm || 1.5,
-        dataAgeDays: 30,
-        hasDirectReadings: places.hospitals.length > 0
-      });
+const hospitalsConfidence = hospitalsData.items.length > 0
+  ? {
+      level: 'Limited',
+      percentage: 40,
+      description: 'Hospital locations are sourced from a historical OpenStreetMap extract dated 10 February 2020. Current operating status and completeness have not been verified.'
+    }
+  : {
+      level: 'Unavailable',
+      percentage: 0,
+      description: 'No hospital records were found within the selected radius, or the hospital dataset could not be retrieved.'
+    };
 
       const transitConfidence = calculateConfidenceScore({
         sourceType: 'official',
@@ -180,7 +186,7 @@ export function useNeighborhoodReport(
           roadsCount: (places.roads || []).length,
           schoolsCount:
             places.schools.length + delhiSchools.items.length,
-          hospitalsCount: places.hospitals.length,
+          hospitalsCount: hospitalsData.items.length,
           transitStopsCount: places.transit.length,
           environmentalStationsCount: 1,
           infrastructureProjectsCount: infrastructure.length,
@@ -250,17 +256,29 @@ export function useNeighborhoodReport(
           }
         },
 
-        hospitals: {
-          items: places.hospitals,
-          confidence: hospitalsConfidence,
-          evidence: {
-            sourceName: 'OpenStreetMap',
-            sourceUrl: 'https://www.openstreetmap.org/',
-            status: osmStatus,
-            coverage: `Within ${radiusKm} km of the searched property`,
-            limitations: osmLimitations
-          }
-        },
+
+hospitals: {
+  items: hospitalsData.items,
+  confidence: hospitalsConfidence,
+  evidence: {
+    sourceName: 'OpenStreetMap India Extract',
+    sourceUrl: 'https://www.openstreetmap.org/',
+    status:
+      hospitalsData.status === 'live'
+        ? 'Available - Historical Data'
+        : hospitalsData.status === 'empty'
+          ? 'No matching records'
+          : hospitalsData.status === 'not_searched'
+            ? 'Not searched'
+            : 'Data Unavailable',
+    coverage: `Within ${radiusKm} km of the searched property`,
+    lastUpdated: '10 February 2020',
+    limitations:
+      'This dataset was extracted from historical OpenStreetMap vector tiles dated 10 February 2020. Hospital locations, operating status, names and completeness may have changed. Results are geographically filtered using the stored coordinates and are not independently verified as currently operational.',
+    errorMessage: hospitalsData.errorMessage
+  }
+},
+
 
         transit: {
           items: places.transit,

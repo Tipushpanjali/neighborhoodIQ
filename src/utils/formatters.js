@@ -48,20 +48,47 @@ export function getAQIInfo(aqi) {
 /**
  * Maps data confidence status to badge configuration
  */
+
+/**
+ * Maps data confidence status to badge configuration
+ */
 export function getStatusBadgeConfig(status) {
-  const norm = (status || '').toLowerCase();
+  const norm = (status || '').toLowerCase().trim();
+
   switch (norm) {
     case 'verified':
       return { label: 'Verified', className: 'badge-verified' };
+
     case 'official but limited':
     case 'official':
       return { label: 'Official (Limited)', className: 'badge-official' };
+
     case 'community reported':
     case 'community':
       return { label: 'Community Reported', className: 'badge-limited' };
+
     case 'estimated':
       return { label: 'Estimated', className: 'badge-estimated' };
+
+    case 'available - historical data':
+      return {
+        label: 'Historical Data',
+        className: 'badge-limited'
+      };
+
+    case 'no matching records':
+    case 'not searched':
+    case 'data unavailable':
+      return {
+        label: 'Data Unavailable',
+        className: 'badge-unavailable'
+      };
+
     default:
-      return { label: 'Data Unavailable', className: 'badge-unavailable' };
+      return {
+        label: 'Data Unavailable',
+        className: 'badge-unavailable'
+      };
   }
 }
+
