@@ -1,7 +1,9 @@
-import { calculateDistanceKm } from '../utils/distance';
-import { DEMO_NEIGHBORHOODS } from '../data/demoNeighborhoods';
 
-// Curated CPCB Continuous Ambient Air Quality Monitoring Stations across Delhi NCR
+import { supabase } from '../lib/supabase';
+import { calculateDistanceKm } from '../utils/distance';
+
+// Reference locations only. These are NOT the stations
+// supplying the OpenWeather readings.
 const CPCB_STATIONS = [
   { name: 'Jawaharlal Nehru University (JNU), South Delhi', lat: 28.5380, lon: 77.1660, stationId: 'DL-JNU-01' },
   { name: 'R.K. Puram Sector 8, South West Delhi', lat: 28.5632, lon: 77.1869, stationId: 'DL-RKP-01' },
@@ -15,48 +17,85 @@ const CPCB_STATIONS = [
 ];
 
 export async function fetchAirQualityData(lat, lon) {
-  // Find nearest official monitoring station
-  let nearestStation = CPCB_STATIONS[0];
-  let minDistance = Infinity;
+  try {
+    const latitude = Number(lat);
+    const longitude = Number(lon);
 
-  CPCB_STATIONS.forEach(st => {
-    const d = calculateDistanceKm(lat, lon, st.lat, st.lon);
-    if (d < minDistance) {
-      minDistance = d;
-      nearestStation = st;
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      throw new Error('Invalid property coordinates.');
     }
-  });
 
-  // Check matching demo neighborhood for rich pollutant and trend profile
-  let matchingDemo = DEMO_NEIGHBORHOODS[0];
-  let demoMinD = Infinity;
-  DEMO_NEIGHBORHOODS.forEach(n => {
-    const d = calculateDistanceKm(lat, lon, n.lat, n.lon);
-    if (d < demoMinD) {
-      demoMinD = d;
-      matchingDemo = n;
+    // Find the nearest listed reference station.
+    let nearestStation = CPCB_STATIONS[0];
+    let minDistance = Infinity;
+
+    CPCB_STATIONS.forEach((station) => {
+      const distance = calculateDistanceKm(
+        latitude,
+        longitude,
+        station.lat,
+        station.lon
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestStation = station;
+      }
+    });
+
+    // Fetch live air pollution data through Supabase Edge Function.
+    const { data, error } = await supabase.functions.invoke(
+      'air-quality',
+      {
+        body: {
+          lat: latitude,
+          lon: longitude
+        }
+      }
+    );
+
+    if (error) {
+      throw error;
     }
-  });
 
-  const baseAQ = matchingDemo.airQuality;
-
-  return {
-    stationName: nearestStation.name,
-    stationId: nearestStation.stationId,
-    stationDistanceKm: parseFloat(minDistance.toFixed(1)),
-    aqi: baseAQ.aqi,
-    primaryPollutant: baseAQ.primaryPollutant,
-    pollutants: baseAQ.pollutants,
-    lastUpdated: baseAQ.lastUpdated,
-    trend: baseAQ.trend,
-    evidence: {
-      sourceName: 'Central Pollution Control Board (CPCB) NAQI Portal',
-      sourceUrl: 'https://airquality.cpcb.gov.in/AQI_India/',
-      status: minDistance < 4 ? 'Verified' : 'Official but limited',
-      coverage: `Monitored at ${nearestStation.name} (${minDistance.toFixed(1)} km away)`,
-      limitations: minDistance > 5
-        ? `Station is ${minDistance.toFixed(1)} km from property. Spatial variations may occur due to localized street topography and trees.`
-        : 'Official continuous ambient air monitoring standard sensor.'
+    if (!data || !data.success) {
+      throw new Error(data?.error || 'Unable to retrieve air quality data.');
     }
-  };
+
+    const components = data.components || {};
+
+    return {
+      stationName: nearestStation.name,
+      stationId: nearestStation.stationId,
+      stationDistanceKm: Number(minDistance.toFixed(1)),
+
+      aqi: data.aqi,
+      aqiScale: data.aqiScale,
+      primaryPollutant: 'Not identified by OpenWeather',
+      pollutants: components,
+
+      lastUpdated: data.observedAt,
+      fetchedAt: data.fetchedAt,
+      trend: null,
+
+      evidence: {
+        sourceName: 'OpenWeather Air Pollution API',
+        sourceUrl: 'https://openweathermap.org/api/air-pollution',
+        status: 'Live API',
+        coverage: `Live coordinate-based reading for ${latitude}, ${longitude}. Nearest listed CPCB reference location: ${nearestStation.name} (${minDistance.toFixed(1)} km away).`,
+        limitations:
+          'AQI uses OpenWeather scale 1–5, not the official CPCB AQI scale 0–500. The reading is not measured by the listed CPCB reference station. Historical trend and primary pollutant are not provided by this current-reading endpoint.'
+      }
+    };
+  } catch (error) {
+    console.error('Air quality service error:', error);
+    throw error;
+  }
 }

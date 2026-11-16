@@ -42,6 +42,19 @@ const PRIORITY_OPTIONS = [
   { id: 'healthcare', label: 'Healthcare Access', icon: Building2 }
 ];
 
+
+const POLLUTANT_LABELS = {
+  co: 'CO',
+  no: 'NO',
+  no2: 'NO₂',
+  o3: 'O₃',
+  so2: 'SO₂',
+  pm2_5: 'PM2.5',
+  pm10: 'PM10',
+  nh3: 'NH₃'
+};
+
+
 export default function NeighborhoodReport() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -147,7 +160,45 @@ longitude: lon,
   utility,
   environmental
 } = reportData;
-  const aqiInfo = getAQIInfo(airQuality.aqi);
+ 
+const aqiInfo = ({
+  1: {
+    category: 'Good',
+    color: '#6D9274',
+    bg: '#EFF5F0',
+    implication: 'Air pollution level is considered good.'
+  },
+  2: {
+    category: 'Fair',
+    color: '#8A9B57',
+    bg: '#F2F5E9',
+    implication: 'Air quality is fair.'
+  },
+  3: {
+    category: 'Moderate',
+    color: '#C2962C',
+    bg: '#FDF6E3',
+    implication: 'Air pollution is at a moderate level.'
+  },
+  4: {
+    category: 'Poor',
+    color: '#D97A45',
+    bg: '#FCF1EE',
+    implication: 'Air pollution is at a poor level.'
+  },
+  5: {
+    category: 'Very Poor',
+    color: '#B94D3D',
+    bg: '#F9EBE8',
+    implication: 'Air pollution is at a very poor level.'
+  }
+})[Number(airQuality.aqi)] || {
+  category: 'Unavailable',
+  color: '#82756C',
+  bg: '#F1ECE6',
+  implication: 'AQI category is currently unavailable.'
+};
+
 
   return (
     <div className="main-content">
@@ -252,7 +303,7 @@ longitude: lon,
             icon={Wind}
             iconColor="#B94D3D"
             iconBg="#F9EBE8"
-            badgeText={`Station: ${airQuality.stationName} (${airQuality.stationDistanceKm} km)`}
+            badgeText={`Nearest listed CPCB reference station: ${airQuality.stationName} (${airQuality.stationDistanceKm} km)`}
             evidence={airQuality.evidence}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -260,7 +311,9 @@ longitude: lon,
                 <span style={{ fontSize: '2.4rem', fontWeight: 800, color: aqiInfo.color, fontFamily: 'var(--font-heading)', lineHeight: 1 }}>
                   {airQuality.aqi}
                 </span>
-                <span style={{ fontSize: '0.9rem', color: '#82756C' }}>NAQI Index</span>
+                <span style={{ fontSize: '0.9rem', color: '#82756C' }}>
+  OpenWeather AQI (1–5)
+</span>
               </div>
               <span
                 style={{
@@ -281,18 +334,79 @@ longitude: lon,
               {aqiInfo.implication} Primary pollutant: <strong>{airQuality.primaryPollutant}</strong>.
             </p>
 
-            {/* Pollutant Breakdown Table */}
-            {airQuality.pollutants && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
-                {Object.entries(airQuality.pollutants).map(([key, val]) => (
-                  <div key={key} style={{ backgroundColor: '#FFFFFF', padding: '8px', borderRadius: '10px', border: '1px solid #E8DCCB', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.72rem', color: '#82756C', textTransform: 'uppercase', fontWeight: 700 }}>{key}</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#392E29' }}>{val.value}</div>
-                    <div style={{ fontSize: '0.68rem', color: '#A3968C' }}>{val.unit} (Std: {val.standard})</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            
+{/* Live Pollutant Breakdown */}
+{airQuality.pollutants && (
+  <div style={{
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '8px',
+    marginBottom: '16px'
+  }}>
+    {Object.entries(airQuality.pollutants).map(([key, val]) => {
+      const pollutantNames = {
+        co: 'CO',
+        no: 'NO',
+        no2: 'NO₂',
+        o3: 'O₃',
+        so2: 'SO₂',
+        pm2_5: 'PM2.5',
+        pm10: 'PM10',
+        nh3: 'NH₃'
+      };
+
+      const value =
+        typeof val === 'object' && val !== null
+          ? val.value
+          : val;
+
+      const unit =
+        typeof val === 'object' && val !== null
+          ? val.unit || 'µg/m³'
+          : 'µg/m³';
+
+      return (
+        <div
+          key={key}
+          style={{
+            backgroundColor: '#FFFFFF',
+            padding: '10px 8px',
+            borderRadius: '10px',
+            border: '1px solid #E8DCCB',
+            textAlign: 'center'
+          }}
+        >
+          <div style={{
+            fontSize: '0.72rem',
+            color: '#82756C',
+            fontWeight: 700
+          }}>
+            {pollutantNames[key] || key.toUpperCase()}
+          </div>
+
+          <div style={{
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: '#392E29',
+            marginTop: '5px'
+          }}>
+            {value !== undefined && value !== null
+              ? Number(value).toFixed(2)
+              : '—'}
+          </div>
+
+          <div style={{
+            fontSize: '0.68rem',
+            color: '#A3968C',
+            marginTop: '3px'
+          }}>
+            {unit}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
 
             {/* Recharts 7-Day Trend Chart */}
             {airQuality.trend && (
