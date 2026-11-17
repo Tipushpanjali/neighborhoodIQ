@@ -1,60 +1,80 @@
+
 import { DEMO_NEIGHBORHOODS } from '../data/demoNeighborhoods';
 
-const NOMINATIM_BASE = import.meta.env.VITE_NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org';
+const NOMINATIM_BASE =
+  import.meta.env.VITE_NOMINATIM_BASE_URL ||
+  'https://nominatim.openstreetmap.org';
 
-// Approximate Delhi NCR Bounding Box: minLon, minLat, maxLon, maxLat
+// Delhi NCR bounding box: minLon, minLat, maxLon, maxLat
+// Used to prioritize Delhi NCR results, not restrict them.
 const DELHI_NCR_VIEWBOX = '76.80,28.95,77.70,28.20';
 
 /**
- * Searches locations using OpenStreetMap Nominatim with rate-limit respect and fallback
- * @param {string} query User entered address or locality
- * @returns {Promise<Array>} List of standardized location objects
+ * Searches locations using OpenStreetMap Nominatim.
+ * Delhi NCR results are prioritized, with curated locality fallback.
+ *
+ * @param {string} query User-entered address or locality
+ * @returns {Promise<Array>} Standardized location objects
  */
 export async function searchAddress(query) {
   if (!query || query.trim().length < 2) {
     return [];
   }
 
-  const cleanQuery = query.trim().toLowerCase();
+  const searchQuery = query.trim();
+  const cleanQuery = searchQuery.toLowerCase();
 
-  // Try live Nominatim API if online
+  // Try live Nominatim API
   try {
     const params = new URLSearchParams({
-      q: cleanQuery,
+      q: searchQuery,
       format: 'json',
       addressdetails: '1',
       limit: '6',
       countrycodes: 'in',
-      viewbox: DELHI_NCR_VIEWBOX,
-      bounded: '1'
+      viewbox: DELHI_NCR_VIEWBOX
     });
 
-    const response = await fetch(`${NOMINATIM_BASE}/search?${params.toString()}`, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'NeighborhoodIQ-DelhiNCR-HomebuyerApp/1.0'
+    const response = await fetch(
+      `${NOMINATIM_BASE}/search?${params.toString()}`,
+      {
+        headers: {
+          Accept: 'application/json'
+        }
       }
-    });
+    );
 
     if (response.ok) {
       const data = await response.json();
+
       if (Array.isArray(data) && data.length > 0) {
-        return data.map(item => ({
-          id: item.place_id ? String(item.place_id) : `loc-${item.lat}-${item.lon}`,
-          name: item.display_name.split(',')[0],
-          displayName: item.display_name,
-          lat: parseFloat(item.lat),
-          lon: parseFloat(item.lon),
-          type: item.type || 'locality',
-          isLive: true
-        }));
+        return data.map(item => {
+          const displayName =
+            item.display_name || item.name || 'Unknown location';
+
+          return {
+            id: item.place_id
+              ? String(item.place_id)
+              : `loc-${item.lat}-${item.lon}`,
+
+            name: displayName.split(',')[0].trim(),
+            displayName,
+            lat: parseFloat(item.lat),
+            lon: parseFloat(item.lon),
+            type: item.type || 'locality',
+            isLive: true
+          };
+        });
       }
     }
   } catch (err) {
-    console.warn('Live Nominatim request failed or rate-limited; falling back to curated Delhi NCR locations:', err.message);
+    console.warn(
+      'Live Nominatim search failed; using curated Delhi NCR locations:',
+      err.message
+    );
   }
 
-  // Graceful fallback: Filter from curated Delhi NCR locations
+  // Fallback: Search curated Delhi NCR locations
   return DEMO_NEIGHBORHOODS.filter(n =>
     n.name.toLowerCase().includes(cleanQuery) ||
     n.locality.toLowerCase().includes(cleanQuery) ||
@@ -72,28 +92,43 @@ export async function searchAddress(query) {
 }
 
 /**
- * Reverse geocodes a latitude and longitude into a friendly address name
+ * Reverse geocodes coordinates into a friendly address.
  */
 export async function reverseGeocode(lat, lon) {
   try {
-    const response = await fetch(`${NOMINATIM_BASE}/reverse?lat=${lat}&lon=${lon}&format=json`, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'NeighborhoodIQ-DelhiNCR-HomebuyerApp/1.0'
-      }
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon),
+      format: 'json'
     });
+
+    const response = await fetch(
+      `${NOMINATIM_BASE}/reverse?${params.toString()}`,
+      {
+        headers: {
+          Accept: 'application/json'
+        }
+      }
+    );
+
     if (response.ok) {
       const data = await response.json();
-      return {
-        displayName: data.display_name,
-        name: data.display_name.split(',')[0],
-        lat: parseFloat(lat),
-        lon: parseFloat(lon),
-        isLive: true
-      };
+
+      if (data.display_name) {
+        return {
+          displayName: data.display_name,
+          name: data.display_name.split(',')[0].trim(),
+          lat: parseFloat(lat),
+          lon: parseFloat(lon),
+          isLive: true
+        };
+      }
     }
   } catch (err) {
-    console.warn('Reverse geocode failed; generating coordinate label:', err.message);
+    console.warn(
+      'Reverse geocode failed; generating coordinate label:',
+      err.message
+    );
   }
 
   return {

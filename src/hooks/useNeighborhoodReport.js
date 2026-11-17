@@ -195,6 +195,15 @@ const hospitalsConfidence = hospitalsData.items.length > 0
 
         airQuality: {
           ...airQuality,
+          evidence: {
+    sourceName: 'OpenWeather API',
+    sourceUrl: 'https://openweathermap.org/api',
+    status: airQuality.aqi != null ? 'Available' : 'Data Unavailable',
+    coverage: 'Air quality readings for the selected coordinates',
+    lastUpdated: airQuality.fetchedAt || new Date().toISOString(),
+    limitations:
+      'OpenWeather AQI uses a 1–5 scale. It is not the Indian CPCB National AQI scale.'
+  },
           confidence: aqConfidence
         },
 
@@ -207,22 +216,22 @@ const hospitalsConfidence = hospitalsData.items.length > 0
           datasetStatus: delhiSchools.status,
           datasetQuery: delhiSchoolQuery,
 
-          datasetEvidence: {
-            sourceName: 'Delhi School Dataset',
-            status:
-              delhiSchools.status === 'live'
-                ? 'Available'
-                : delhiSchools.status === 'empty'
-                  ? 'No matching records'
-                  : delhiSchools.status === 'not_searched'
-                    ? 'Not searched'
-                    : 'Data Unavailable',
-            coverage: delhiSchoolQuery
-              ? `Delhi locality text search: ${delhiSchoolQuery}`
-              : 'Delhi-only dataset. The selected city is outside its identified coverage.',
-            limitations:
-              'Shows up to five address-text matches from the Delhi school dataset. These are not verified geographically nearest schools. Coordinates and distances are currently unavailable.'
-          },
+          evidence: {
+  sourceName: 'Delhi School Dataset',
+  status:
+    delhiSchools.status === 'live'
+      ? 'Available'
+      : delhiSchools.status === 'empty'
+        ? 'No matching records'
+        : delhiSchools.status === 'not_searched'
+          ? 'Not searched'
+          : 'Data Unavailable',
+  coverage: delhiSchoolQuery
+    ? `Delhi locality search: ${delhiSchoolQuery}`
+    : 'Delhi-only dataset',
+  limitations:
+    'School records are matched using locality text. They are not verified as the geographically nearest schools. College results are separately sourced from CollegeDB.'
+},  
 
           // Existing CollegeDB results.
           colleges: colleges.items,
@@ -247,13 +256,7 @@ const hospitalsConfidence = hospitalsData.items.length > 0
 
           confidence: schoolsConfidence,
 
-          evidence: {
-            sourceName: 'OpenStreetMap',
-            sourceUrl: 'https://www.openstreetmap.org/',
-            status: osmStatus,
-            coverage: `Within ${radiusKm} km of the searched property`,
-            limitations: osmLimitations
-          }
+          
         },
 
 
@@ -261,8 +264,8 @@ hospitals: {
   items: hospitalsData.items,
   confidence: hospitalsConfidence,
   evidence: {
-    sourceName: 'OpenStreetMap India Extract',
-    sourceUrl: 'https://www.openstreetmap.org/',
+    sourceName: 'maptiler map data',
+    sourceUrl: 'https://www.maptiler.com//',
     status:
       hospitalsData.status === 'live'
         ? 'Available - Historical Data'
@@ -284,23 +287,25 @@ hospitals: {
           items: places.transit,
           confidence: transitConfidence,
           evidence: {
-            sourceName: 'OpenStreetMap',
-            sourceUrl: 'https://www.openstreetmap.org/',
-            status: osmStatus,
-            coverage: `Within ${radiusKm} km of the searched property`,
-            limitations: osmLimitations
-          }
+  sourceName: 'Open Transit Data Delhi',
+  sourceUrl: 'https://otd.delhi.gov.in/data/realtime/',
+  status: places.status === 'live' ? 'Available' : 'Data Unavailable',
+  coverage: `Within ${radiusKm} km of the selected property`,
+  limitations:
+    'Transit availability and completeness depend on the records provided by the transit data service.'
+}
         },
 
         roads: {
           items: places.roads || [],
           evidence: {
-            sourceName: 'OpenStreetMap',
-            sourceUrl: 'https://www.openstreetmap.org/',
-            status: osmStatus,
-            coverage: `Within ${radiusKm} km of the searched property`,
-            limitations: osmLimitations
-          }
+  sourceName: 'Mappls',
+  sourceUrl: 'https://www.mappls.com/',
+  status: places.status === 'live' ? 'Available' : 'Data Unavailable',
+  coverage: `Within ${radiusKm} km of the selected property`,
+  limitations:
+    'Mapped road coverage may be incomplete. The displayed road segments do not independently establish road condition or traffic levels.'
+}
         },
 
         infrastructure: {

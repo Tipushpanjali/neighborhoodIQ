@@ -12,7 +12,7 @@ import {
   HardHat,
   Droplets,
   Volume2,
-  Filter,
+  
   Check,
   RefreshCw,
   ExternalLink,
@@ -33,14 +33,6 @@ import SearchLocation from '../components/SearchLocation';
 import { getAQIInfo, formatTimestamp } from '../utils/formatters';
 import { formatDistance } from '../utils/distance';
 
-const PRIORITY_OPTIONS = [
-  { id: 'all', label: 'Balanced Overview', icon: Filter },
-  { id: 'families', label: 'Families with Children', icon: GraduationCap },
-  { id: 'commuters', label: 'Daily Commuters', icon: Navigation },
-  { id: 'transit', label: 'Public Transit Users', icon: Train },
-  { id: 'environmental', label: 'Environmental Conditions', icon: Wind },
-  { id: 'healthcare', label: 'Healthcare Access', icon: Building2 }
-];
 
 
 const POLLUTANT_LABELS = {
@@ -67,7 +59,7 @@ export default function NeighborhoodReport() {
   const radiusKm = parseFloat(queryParams.get('radius') || '2.0');
   const propertyName = queryParams.get('name') || 'Vasant Kunj, South Delhi';
 
-  const [selectedPriority, setSelectedPriority] = useState('all');
+  //const [selectedPriority, setSelectedPriority] = useState('all');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
@@ -75,7 +67,7 @@ export default function NeighborhoodReport() {
   lat,
   lon,
   radiusKm,
-  selectedPriority,
+  'all',
   propertyName
 );
 
@@ -218,26 +210,8 @@ const aqiInfo = ({
       />
 
       <div className="container">
-        {/* Priority Filter Bar */}
-        <div className="priority-filter-bar">
-          <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#82756C', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Filter size={15} /> Personalize Priority:
-          </span>
-          {PRIORITY_OPTIONS.map(opt => {
-            const Icon = opt.icon;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                className={`priority-chip ${selectedPriority === opt.id ? 'active' : ''}`}
-                onClick={() => setSelectedPriority(opt.id)}
-              >
-                <Icon size={14} />
-                <span>{opt.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Priority Filter Bar    //removed*/}
+    
 
         {/* Overview Metric Strip */}
         <div className="overview-metrics-grid">
